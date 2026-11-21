@@ -1,8 +1,18 @@
+
 import os
+import csv
 from pyspark.sql import SparkSession
 
 
-# 1. Create Spark Session
+# 1. Project Paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dataset_path = os.path.join(BASE_DIR, "data set")
+output_path = os.path.join(BASE_DIR, "output")
+
+os.makedirs(output_path, exist_ok=True)
+
+
+# 2. Create Spark Session
 spark = SparkSession.builder \
     .appName("IR Project - Positional Index") \
     .master("local[*]") \
@@ -11,11 +21,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 2. Dataset folder path
-dataset_path = "data set"
-
-
-# 3. Read all documents
+# 3. Read Documents
 documents = []
 
 for filename in os.listdir(dataset_path):
@@ -27,47 +33,40 @@ for filename in os.listdir(dataset_path):
         with open(file_path, "r", encoding="utf-8") as file:
             content = file.read().lower()
 
-        documents.append((filename.replace(".txt", ""), content))
+        doc_id = filename.replace(".txt", "")
+        documents.append((doc_id, content))
 
 
-# 4. Convert documents to RDD
+# 4. Build Positional Index
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 
-# 5. Create positional index
 def create_positional_index(document):
 
     doc_id, content = document
-
     words = content.split()
 
-    result = []
-
-    for position, word in enumerate(words, start=1):
-        result.append((word, (doc_id, position)))
-
-    return result
+    return [
+        (word, (doc_id, position))
+        for position, word in enumerate(words, start=1)
+    ]
 
 
-# 6. Generate index using Spark
-index_rdd = documents_rdd.flatMap(create_positional_index)
+positional_rdd = documents_rdd.flatMap(create_positional_index)
+
+index_rdd = positional_rdd.groupByKey().mapValues(list)
+
+index_data = index_rdd.collect()
 
 
-# 7. Group positions by term and document
-grouped_index = index_rdd \
-    .groupByKey() \
-    .mapValues(list) \
-    .collect()
-
-
-# 8. Display positional index
+# 5. Convert to Dictionary
 positional_index = {}
 
-for word, occurrences in grouped_index:
+for word, postings in index_data:
 
     positional_index[word] = {}
 
-    for doc_id, position in occurrences:
+    for doc_id, position in postings:
 
         if doc_id not in positional_index[word]:
             positional_index[word][doc_id] = []
@@ -75,19 +74,50 @@ for word, occurrences in grouped_index:
         positional_index[word][doc_id].append(position)
 
 
-# 9. Print results
+# 6. Print Positional Index
 print("\n========== POSITIONAL INDEX ==========\n")
 
 for word in sorted(positional_index):
 
-    print(f"Term: {word}")
+    print(f"{word}:")
 
-    for doc_id in sorted(positional_index[word]):
+    for doc_id in sorted(
+        positional_index[word],
+        key=lambda x: int(x[1:])
+    ):
+
         positions = sorted(positional_index[word][doc_id])
 
-        print(f"    {doc_id}: {positions}")
-
-    print()
+        print(f"  {doc_id}: {positions}")
 
 
+# 7. Save Positional Index to CSV
+csv_file = os.path.join(output_path, "positional_index.csv")
+
+with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
+
+    writer = csv.writer(file)
+
+    writer.writerow(["Term", "Document", "Positions"])
+
+    for word in sorted(positional_index):
+
+        for doc_id in sorted(
+            positional_index[word],
+            key=lambda x: int(x[1:])
+        ):
+
+            positions = sorted(positional_index[word][doc_id])
+
+            writer.writerow([
+                word,
+                doc_id,
+                " ".join(map(str, positions))
+            ])
+
+
+print(f"\nPositional Index saved to: {csv_file}")
+
+
+# 8. Stop Spark
 spark.stop()

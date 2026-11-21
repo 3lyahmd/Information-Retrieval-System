@@ -1,0 +1,6 @@
+﻿Query,Document,Cosine Similarity
+machine learning AND data science,d5,0.511256
+machine learning AND NOT data science,d1,1.0
+machine learning AND NOT data science,d10,0.307183
+machine learning AND NOT data science,d2,0.28668
+machine learning AND NOT data science,d7,0.273001

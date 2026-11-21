@@ -1,10 +1,19 @@
-#boolean_queries.py
+
 import os
+import csv
 import math
 from pyspark.sql import SparkSession
 
 
-# 1. Create Spark Session
+# 1. Project Paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dataset_path = os.path.join(BASE_DIR, "data set")
+output_path = os.path.join(BASE_DIR, "output")
+
+os.makedirs(output_path, exist_ok=True)
+
+
+# 2. Create Spark Session
 spark = SparkSession.builder \
     .appName("IR Project - Boolean Queries") \
     .master("local[*]") \
@@ -13,9 +22,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 2. Read Documents
-dataset_path = "data set"
-
+# 3. Read Documents
 documents = {}
 
 for filename in os.listdir(dataset_path):
@@ -31,10 +38,11 @@ for filename in os.listdir(dataset_path):
         documents[doc_id] = content.split()
 
 
-# 3. Calculate TF using Spark
+# 4. Calculate TF using Spark
 documents_rdd = spark.sparkContext.parallelize(
     [(doc_id, words) for doc_id, words in documents.items()]
 )
+
 
 def calculate_tf(document):
 
@@ -47,7 +55,7 @@ tf_rdd = documents_rdd.flatMap(calculate_tf) \
     .reduceByKey(lambda a, b: a + b)
 
 
-# 4. Calculate DF and IDF
+# 5. Calculate DF and IDF
 df_rdd = tf_rdd.map(
     lambda item: (item[0][0], 1)
 ).reduceByKey(lambda a, b: a + b)
@@ -64,7 +72,7 @@ idf_dict = dict(
 )
 
 
-# 5. Calculate TF-IDF
+# 6. Calculate TF-IDF
 tfidf_matrix = {}
 
 for (word, doc_id), tf in tf_rdd.collect():
@@ -78,7 +86,7 @@ for (word, doc_id), tf in tf_rdd.collect():
     tfidf_matrix[doc_id][word] = tfidf
 
 
-# 6. Normalize Document Vectors
+# 7. Normalize Document Vectors
 normalized_docs = {}
 
 for doc_id, weights in tfidf_matrix.items():
@@ -87,13 +95,16 @@ for doc_id, weights in tfidf_matrix.items():
         sum(value ** 2 for value in weights.values())
     )
 
-    normalized_docs[doc_id] = {
-        word: value / vector_length
-        for word, value in weights.items()
-    }
+    if vector_length == 0:
+        normalized_docs[doc_id] = {}
+    else:
+        normalized_docs[doc_id] = {
+            word: value / vector_length
+            for word, value in weights.items()
+        }
 
 
-# 7. Calculate Similarity
+# 8. Calculate Similarity
 def calculate_similarity(query):
 
     query_terms = query.lower().split()
@@ -137,7 +148,7 @@ def calculate_similarity(query):
     return scores
 
 
-# 8. Boolean Query Functions
+# 9. Boolean Query Functions
 def contains_all_terms(doc_id, terms):
 
     words = documents[doc_id]
@@ -145,8 +156,7 @@ def contains_all_terms(doc_id, terms):
     return all(term in words for term in terms)
 
 
-# Query 1:
-# machine AND learning AND data AND science
+# Query 1
 query1_results = []
 
 for doc_id in documents:
@@ -159,8 +169,7 @@ for doc_id in documents:
         query1_results.append(doc_id)
 
 
-# Query 2:
-# (machine AND learning) AND NOT (data AND science)
+# Query 2
 query2_results = []
 
 for doc_id in documents:
@@ -177,7 +186,7 @@ for doc_id in documents:
         query2_results.append(doc_id)
 
 
-# 9. Rank Boolean Results by Similarity
+# 10. Rank Boolean Results by Similarity
 def rank_results(results, query):
 
     scores = calculate_similarity(query)
@@ -194,7 +203,10 @@ def rank_results(results, query):
     )
 
 
-# 10. Display Results
+# 11. Display and Collect Results
+all_results = []
+
+
 print("\n========== BOOLEAN QUERY 1 ==========")
 print("Query: machine learning AND data science\n")
 
@@ -204,7 +216,14 @@ ranked_query1 = rank_results(
 )
 
 for doc_id, score in ranked_query1:
+
     print(f"{doc_id}: Similarity = {score:.4f}")
+
+    all_results.append([
+        "machine learning AND data science",
+        doc_id,
+        round(score, 6)
+    ])
 
 
 print("\n========== BOOLEAN QUERY 2 ==========")
@@ -216,7 +235,34 @@ ranked_query2 = rank_results(
 )
 
 for doc_id, score in ranked_query2:
+
     print(f"{doc_id}: Similarity = {score:.4f}")
 
+    all_results.append([
+        "machine learning AND NOT data science",
+        doc_id,
+        round(score, 6)
+    ])
 
+
+# 12. Save Results to CSV
+csv_file = os.path.join(output_path, "boolean_queries.csv")
+
+with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
+
+    writer = csv.writer(file)
+
+    writer.writerow([
+        "Query",
+        "Document",
+        "Cosine Similarity"
+    ])
+
+    writer.writerows(all_results)
+
+
+print(f"\nBoolean Query Results saved to: {csv_file}")
+
+
+# 13. Stop Spark
 spark.stop()

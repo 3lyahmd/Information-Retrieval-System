@@ -1,9 +1,18 @@
 
 import os
+import csv
 from pyspark.sql import SparkSession
 
 
-# 1. Create Spark Session
+# 1. Project Paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dataset_path = os.path.join(BASE_DIR, "data set")
+output_path = os.path.join(BASE_DIR, "output")
+
+os.makedirs(output_path, exist_ok=True)
+
+
+# 2. Create Spark Session
 spark = SparkSession.builder \
     .appName("IR Project - Phrase Queries") \
     .master("local[*]") \
@@ -12,9 +21,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 2. Read Documents
-dataset_path = "data set"
-
+# 3. Read Documents
 documents = []
 
 for filename in os.listdir(dataset_path):
@@ -30,32 +37,32 @@ for filename in os.listdir(dataset_path):
         documents.append((doc_id, content))
 
 
-# 3. Create RDD
+# 4. Build Positional Index
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 
-# 4. Build Positional Index
 def get_positions(document):
 
     doc_id, content = document
-
     words = content.split()
 
-    result = []
-
-    for position, word in enumerate(words, start=1):
-        result.append((word, (doc_id, position)))
-
-    return result
+    return [
+        (word, (doc_id, position))
+        for position, word in enumerate(words, start=1)
+    ]
 
 
 positional_rdd = documents_rdd.flatMap(get_positions)
 
-grouped_index = positional_rdd.groupByKey().mapValues(list).collect()
+index_rdd = positional_rdd.groupByKey().mapValues(list)
 
+index_data = index_rdd.collect()
+
+
+# 5. Convert to Dictionary
 positional_index = {}
 
-for word, postings in grouped_index:
+for word, postings in index_data:
 
     positional_index[word] = {}
 
@@ -67,7 +74,7 @@ for word, postings in grouped_index:
         positional_index[word][doc_id].append(position)
 
 
-# 5. Phrase Search Function
+# 6. Phrase Search Function
 def phrase_search(phrase):
 
     terms = phrase.lower().split()
@@ -75,12 +82,12 @@ def phrase_search(phrase):
     if len(terms) < 2:
         return {}
 
-    first_term = terms[0]
-
-    if first_term not in positional_index:
+    if any(term not in positional_index for term in terms):
         return {}
 
-    matches = {}
+    results = {}
+
+    first_term = terms[0]
 
     for doc_id, positions in positional_index[first_term].items():
 
@@ -88,50 +95,74 @@ def phrase_search(phrase):
 
         for position in positions:
 
-            found = True
+            match = True
 
             for i in range(1, len(terms)):
 
-                term = terms[i]
+                next_term = terms[i]
 
-                if term not in positional_index:
-                    found = False
+                if (
+                    next_term not in positional_index
+                    or doc_id not in positional_index[next_term]
+                    or position + i not in positional_index[next_term][doc_id]
+                ):
+
+                    match = False
                     break
 
-                term_positions = positional_index[term].get(doc_id, [])
-
-                if position + i not in term_positions:
-                    found = False
-                    break
-
-            if found:
+            if match:
                 matching_positions.append(position)
 
         if matching_positions:
-            matches[doc_id] = matching_positions
+            results[doc_id] = matching_positions
 
-    return matches
+    return results
 
 
-# 6. Test Phrase Queries
+# 7. Test Phrase Queries
 queries = [
     "machine learning",
     "data science"
 ]
 
-for query in queries:
+all_results = []
 
-    results = phrase_search(query)
+for query in queries:
 
     print(f"\n========== PHRASE QUERY: {query} ==========\n")
 
-    if results:
+    results = phrase_search(query)
 
-        for doc_id in sorted(results, key=lambda x: int(x[1:])):
-            print(f"{doc_id}: positions {results[doc_id]}")
-
-    else:
+    if not results:
         print("No matching documents found.")
 
+    for doc_id in sorted(results, key=lambda x: int(x[1:])):
 
+        positions = sorted(results[doc_id])
+
+        print(f"{doc_id}: {positions}")
+
+        all_results.append([
+            query,
+            doc_id,
+            " ".join(map(str, positions))
+        ])
+
+
+# 8. Save Results to CSV
+csv_file = os.path.join(output_path, "phrase_queries.csv")
+
+with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
+
+    writer = csv.writer(file)
+
+    writer.writerow(["Phrase", "Document", "Positions"])
+
+    writer.writerows(all_results)
+
+
+print(f"\nPhrase Query Results saved to: {csv_file}")
+
+
+# 9. Stop Spark
 spark.stop()
