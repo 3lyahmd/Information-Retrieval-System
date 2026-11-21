@@ -62,7 +62,6 @@ def calculate_signature():
             os.path.join(project_path, script)
         )
 
-    # Sort files for consistent signature
     files_to_check.sort()
 
     for file_path in files_to_check:
@@ -91,7 +90,6 @@ def cache_is_valid():
     if not os.path.exists(cache_file):
         return False
 
-    # Check CSV files
     for filename in required_outputs:
 
         file_path = os.path.join(output_path, filename)
@@ -102,7 +100,6 @@ def cache_is_valid():
         if os.path.getsize(file_path) == 0:
             return False
 
-    # Compare signatures
     with open(cache_file, "r", encoding="utf-8") as file:
         saved_signature = file.read().strip()
 
@@ -135,13 +132,148 @@ def display_saved_results():
                 print(" | ".join(row))
 
 
-# 8. Project Header
+# 8. Create Excel Workbook
+def combine_all_results():
+
+    from openpyxl import Workbook
+    from openpyxl.styles import (
+        Font,
+        PatternFill,
+        Alignment,
+        Border,
+        Side
+    )
+    from openpyxl.utils import get_column_letter
+
+    combined_file = os.path.join(
+        output_path, "all_results.xlsx"
+    )
+
+    workbook = Workbook()
+
+    # Remove default sheet
+    default_sheet = workbook.active
+    workbook.remove(default_sheet)
+
+    sheet_names = {
+        "positional_index.csv": "Positional Index",
+        "term_statistics.csv": "Term Statistics",
+        "term_statistics_summary.csv": "Statistics Summary",
+        "tfidf.csv": "TF-IDF",
+        "normalized_tfidf.csv": "Normalized TF-IDF",
+        "phrase_queries.csv": "Phrase Queries",
+        "similarity.csv": "Similarity",
+        "boolean_queries.csv": "Boolean Queries"
+    }
+
+    # Header formatting
+    header_fill = PatternFill(
+        fill_type="solid",
+        fgColor="1F4E78"
+    )
+
+    header_font = Font(
+        bold=True,
+        color="FFFFFF",
+        size=11
+    )
+
+    thin_border = Border(
+        bottom=Side(
+            style="thin",
+            color="D9E2F3"
+        )
+    )
+
+    # Create sheets
+    for filename, sheet_name in sheet_names.items():
+
+        file_path = os.path.join(output_path, filename)
+
+        sheet = workbook.create_sheet(title=sheet_name)
+
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8-sig",
+            newline=""
+        ) as file:
+
+            reader = csv.reader(file)
+
+            for row_index, row in enumerate(reader, start=1):
+
+                for col_index, value in enumerate(row, start=1):
+
+                    cell = sheet.cell(
+                        row=row_index,
+                        column=col_index,
+                        value=value
+                    )
+
+                    cell.alignment = Alignment(
+                        horizontal="center",
+                        vertical="center"
+                    )
+
+                    if row_index == 1:
+
+                        cell.fill = header_fill
+                        cell.font = header_font
+
+                    else:
+
+                        cell.border = thin_border
+
+        # Freeze header
+        sheet.freeze_panes = "A2"
+
+        # Add filters
+        sheet.auto_filter.ref = sheet.dimensions
+
+        # Adjust column widths
+        for column in sheet.columns:
+
+            max_length = 0
+
+            column_letter = get_column_letter(
+                column[0].column
+            )
+
+            for cell in column:
+
+                if cell.value is not None:
+
+                    max_length = max(
+                        max_length,
+                        len(str(cell.value))
+                    )
+
+            sheet.column_dimensions[column_letter].width = min(
+                max_length + 4,
+                40
+            )
+
+        sheet.row_dimensions[1].height = 25
+
+    # Save workbook
+    workbook.save(combined_file)
+
+    print("\n" + "=" * 60)
+    print("EXCEL WORKBOOK CREATED SUCCESSFULLY")
+    print("=" * 60)
+
+    print(f"File: {combined_file}")
+    print(f"Total Sheets: {len(sheet_names)}")
+
+
+# 9. Project Header
 print("\n" + "=" * 60)
 print("       INFORMATION RETRIEVAL PROJECT")
 print("=" * 60, flush=True)
 
 
-# 9. Use Cache or Run Spark
+# 10. Use Cache or Run Spark
 if cache_is_valid():
 
     print("\nCACHE FOUND!")
@@ -150,13 +282,11 @@ if cache_is_valid():
 
     display_saved_results()
 
-
 else:
 
     print("\nCACHE NOT FOUND OR PROJECT CHANGED.")
     print("Running all project tasks...\n", flush=True)
 
-    # Run all scripts
     for index, script in enumerate(scripts, start=1):
 
         script_path = os.path.join(project_path, script)
@@ -203,7 +333,7 @@ else:
         print(f"\nFinished: {script}", flush=True)
 
 
-    # 10. Verify CSV Files
+    # 11. Verify CSV Files
     missing_outputs = []
 
     for filename in required_outputs:
@@ -228,7 +358,7 @@ else:
         sys.exit(1)
 
 
-    # 11. Save Cache Signature
+    # 12. Save Cache Signature
     current_signature = calculate_signature()
 
     with open(cache_file, "w", encoding="utf-8") as file:
@@ -238,7 +368,11 @@ else:
     print("Cache signature saved.")
 
 
-# 12. Finish
+# 13. Create Excel Workbook
+combine_all_results()
+
+
+# 14. Finish
 print("\n" + "=" * 60)
 print("       PROJECT COMPLETED SUCCESSFULLY")
 print("=" * 60)
