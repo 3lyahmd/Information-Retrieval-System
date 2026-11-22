@@ -4,7 +4,7 @@ import csv
 from pyspark.sql import SparkSession
 
 
-# 1. Project Paths
+#paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dataset_path = os.path.join(BASE_DIR, "data set")
 output_path = os.path.join(BASE_DIR, "output")
@@ -12,7 +12,7 @@ output_path = os.path.join(BASE_DIR, "output")
 os.makedirs(output_path, exist_ok=True)
 
 
-# 2. Create Spark Session
+#build spark session
 spark = SparkSession.builder \
     .appName("IR Project - Positional Index") \
     .master("local[*]") \
@@ -21,7 +21,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 3. Read Documents
+#read documents
 documents = []
 
 for filename in os.listdir(dataset_path):
@@ -31,13 +31,13 @@ for filename in os.listdir(dataset_path):
         file_path = os.path.join(dataset_path, filename)
 
         with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read().lower()
+            content = file.read().lower() #tokinization
 
         doc_id = filename.replace(".txt", "")
         documents.append((doc_id, content))
 
 
-# 4. Build Positional Index
+#build positional index
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 
@@ -59,7 +59,7 @@ index_rdd = positional_rdd.groupByKey().mapValues(list)
 index_data = index_rdd.collect()
 
 
-# 5. Convert to Dictionary
+# convert to dictionary
 positional_index = {}
 
 for word, postings in index_data:
@@ -74,7 +74,7 @@ for word, postings in index_data:
         positional_index[word][doc_id].append(position)
 
 
-# 6. Print Positional Index
+#printing
 print("\n========== POSITIONAL INDEX ==========\n")
 
 for word in sorted(positional_index):
@@ -91,7 +91,7 @@ for word in sorted(positional_index):
         print(f"  {doc_id}: {positions}")
 
 
-# 7. Save Positional Index to CSV
+#saving to csv
 csv_file = os.path.join(output_path, "positional_index.csv")
 
 with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -119,5 +119,4 @@ with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
 print(f"\nPositional Index saved to: {csv_file}")
 
 
-# 8. Stop Spark
 spark.stop()

@@ -1,10 +1,9 @@
-
 import os
 import csv
 from pyspark.sql import SparkSession
 
 
-# 1. Project Paths
+#paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dataset_path = os.path.join(BASE_DIR, "data set")
 output_path = os.path.join(BASE_DIR, "output")
@@ -12,7 +11,7 @@ output_path = os.path.join(BASE_DIR, "output")
 os.makedirs(output_path, exist_ok=True)
 
 
-# 2. Create Spark Session
+#building spark session
 spark = SparkSession.builder \
     .appName("IR Project - Phrase Queries") \
     .master("local[*]") \
@@ -21,7 +20,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 3. Read Documents
+#reading documents
 documents = []
 
 for filename in os.listdir(dataset_path):
@@ -37,7 +36,7 @@ for filename in os.listdir(dataset_path):
         documents.append((doc_id, content))
 
 
-# 4. Build Positional Index
+#build positional index
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 
@@ -59,7 +58,7 @@ index_rdd = positional_rdd.groupByKey().mapValues(list)
 index_data = index_rdd.collect()
 
 
-# 5. Convert to Dictionary
+#convert to dictionary
 positional_index = {}
 
 for word, postings in index_data:
@@ -74,7 +73,7 @@ for word, postings in index_data:
         positional_index[word][doc_id].append(position)
 
 
-# 6. Phrase Search Function
+#phrase search function
 def phrase_search(phrase):
 
     terms = phrase.lower().split()
@@ -119,7 +118,7 @@ def phrase_search(phrase):
     return results
 
 
-# 7. Test Phrase Queries
+#testing
 queries = [
     "machine learning",
     "data science"
@@ -149,7 +148,7 @@ for query in queries:
         ])
 
 
-# 8. Save Results to CSV
+#saving to CSV
 csv_file = os.path.join(output_path, "phrase_queries.csv")
 
 with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -163,6 +162,4 @@ with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
 
 print(f"\nPhrase Query Results saved to: {csv_file}")
 
-
-# 9. Stop Spark
 spark.stop()

@@ -1,11 +1,10 @@
-
 import os
 import csv
 import math
 from pyspark.sql import SparkSession
 
 
-# 1. Project Paths
+#paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dataset_path = os.path.join(BASE_DIR, "data set")
 output_path = os.path.join(BASE_DIR, "output")
@@ -13,7 +12,7 @@ output_path = os.path.join(BASE_DIR, "output")
 os.makedirs(output_path, exist_ok=True)
 
 
-# 2. Create Spark Session
+#building spark session
 spark = SparkSession.builder \
     .appName("IR Project - Similarity") \
     .master("local[*]") \
@@ -22,7 +21,7 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("ERROR")
 
 
-# 3. Read Documents
+#reading documents
 documents = []
 
 for filename in os.listdir(dataset_path):
@@ -38,7 +37,7 @@ for filename in os.listdir(dataset_path):
         documents.append((doc_id, content))
 
 
-# 4. Calculate TF
+#TF
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 tf_rdd = documents_rdd.flatMap(
@@ -49,7 +48,7 @@ tf_rdd = documents_rdd.flatMap(
 ).reduceByKey(lambda a, b: a + b)
 
 
-# 5. Calculate DF
+#DF
 df_rdd = tf_rdd.map(
     lambda item: (item[0][0], 1)
 ).reduceByKey(lambda a, b: a + b)
@@ -64,7 +63,7 @@ idf_dict = {
 }
 
 
-# 6. Build TF-IDF Matrix
+#TF-IDF Matrix
 tfidf_data = tf_rdd.collect()
 
 tfidf_matrix = {}
@@ -82,7 +81,7 @@ for (word, doc_id), tf in tfidf_data:
     tfidf_matrix[doc_id][word] = score
 
 
-# 7. Normalize Document Vectors
+#normalization
 normalized_matrix = {}
 
 for doc_id, vector in tfidf_matrix.items():
@@ -100,7 +99,7 @@ for doc_id, vector in tfidf_matrix.items():
         }
 
 
-# 8. Calculate Cosine Similarity
+#cosine similarity
 def calculate_similarity(query):
 
     words = query.lower().split()
@@ -147,7 +146,7 @@ def calculate_similarity(query):
     return scores
 
 
-# 9. Test Queries
+#tsting
 queries = [
     "machine learning",
     "data science"
@@ -172,7 +171,7 @@ for query in queries:
         ])
 
 
-# 10. Save Results to CSV
+#CSV
 csv_file = os.path.join(output_path, "similarity.csv")
 
 with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -190,6 +189,4 @@ with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
 
 print(f"\nSimilarity Results saved to: {csv_file}")
 
-
-# 11. Stop Spark
 spark.stop()

@@ -1,4 +1,3 @@
-
 import os
 import sys
 import csv
@@ -6,7 +5,7 @@ import hashlib
 import subprocess
 
 
-# 1. Project Paths
+#paths
 project_path = os.path.dirname(os.path.abspath(__file__))
 
 dataset_path = os.path.join(project_path, "data set")
@@ -15,7 +14,7 @@ output_path = os.path.join(project_path, "output")
 os.makedirs(output_path, exist_ok=True)
 
 
-# 2. Scripts to Run
+#scripts
 scripts = [
     "logic/positional_index.py",
     "logic/term_statistics.py",
@@ -26,7 +25,7 @@ scripts = [
 ]
 
 
-# 3. Expected CSV Files
+#CSV files
 required_outputs = [
     "positional_index.csv",
     "term_statistics.csv",
@@ -39,7 +38,7 @@ required_outputs = [
 ]
 
 
-# 4. Calculate Project Signature
+#calculate signature
 def calculate_signature():
 
     signature = hashlib.sha256()
@@ -78,13 +77,13 @@ def calculate_signature():
     return signature.hexdigest()
 
 
-# 5. Cache File
+#cache file
 cache_file = os.path.join(
     output_path, "cache_signature.txt"
 )
 
 
-# 6. Check Cache
+#check cache
 def cache_is_valid():
 
     if not os.path.exists(cache_file):
@@ -108,7 +107,7 @@ def cache_is_valid():
     return saved_signature == current_signature
 
 
-# 7. Display Saved CSV Results
+#Display CSV
 def display_saved_results():
 
     for filename in required_outputs:
@@ -132,7 +131,7 @@ def display_saved_results():
                 print(" | ".join(row))
 
 
-# 8. Create Excel Workbook
+#Create Excel Workbook
 def combine_all_results():
 
     from openpyxl import Workbook
@@ -267,13 +266,13 @@ def combine_all_results():
     print(f"Total Sheets: {len(sheet_names)}")
 
 
-# 9. Project Header
+#header
 print("\n" + "=" * 60)
 print("       INFORMATION RETRIEVAL PROJECT")
 print("=" * 60, flush=True)
 
 
-# 10. Use Cache or Run Spark
+#Use Cache or Run Spark
 if cache_is_valid():
 
     print("\nCACHE FOUND!")
@@ -333,7 +332,7 @@ else:
         print(f"\nFinished: {script}", flush=True)
 
 
-    # 11. Verify CSV Files
+    #Verify CSV Files
     missing_outputs = []
 
     for filename in required_outputs:
@@ -358,7 +357,7 @@ else:
         sys.exit(1)
 
 
-    # 12. Save Cache Signature
+    #Save Cache Signature
     current_signature = calculate_signature()
 
     with open(cache_file, "w", encoding="utf-8") as file:
@@ -368,11 +367,9 @@ else:
     print("Cache signature saved.")
 
 
-# 13. Create Excel Workbook
+#Create Excel Workbook
 combine_all_results()
 
-
-# 14. Finish
 print("\n" + "=" * 60)
 print("       PROJECT COMPLETED SUCCESSFULLY")
 print("=" * 60)
