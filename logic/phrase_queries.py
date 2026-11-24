@@ -1,42 +1,31 @@
+
 import os
+import sys
 import csv
-from pyspark.sql import SparkSession
+
+# Add project directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from logic.functions import (
+    get_paths,
+    create_spark_session,
+    read_documents
+)
 
 
-#paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dataset_path = os.path.join(BASE_DIR, "data set")
-output_path = os.path.join(BASE_DIR, "output")
-
-os.makedirs(output_path, exist_ok=True)
+# Paths
+BASE_DIR, dataset_path, output_path = get_paths()
 
 
-#building spark session
-spark = SparkSession.builder \
-    .appName("IR Project - Phrase Queries") \
-    .master("local[*]") \
-    .getOrCreate()
-
-spark.sparkContext.setLogLevel("ERROR")
+# Create Spark Session
+spark = create_spark_session("IR Project - Phrase Queries")
 
 
-#reading documents
-documents = []
-
-for filename in os.listdir(dataset_path):
-
-    if filename.endswith(".txt"):
-
-        file_path = os.path.join(dataset_path, filename)
-
-        with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read().lower()
-
-        doc_id = filename.replace(".txt", "")
-        documents.append((doc_id, content))
+# Read Documents
+documents = read_documents(dataset_path)
 
 
-#build positional index
+# Build Positional Index
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 
@@ -58,7 +47,7 @@ index_rdd = positional_rdd.groupByKey().mapValues(list)
 index_data = index_rdd.collect()
 
 
-#convert to dictionary
+# Convert to Dictionary
 positional_index = {}
 
 for word, postings in index_data:
@@ -73,7 +62,7 @@ for word, postings in index_data:
         positional_index[word][doc_id].append(position)
 
 
-#phrase search function
+# Phrase Search Function
 def phrase_search(phrase):
 
     terms = phrase.lower().split()
@@ -118,7 +107,7 @@ def phrase_search(phrase):
     return results
 
 
-#testing
+# Testing
 queries = [
     "machine learning",
     "data science"
@@ -148,7 +137,7 @@ for query in queries:
         ])
 
 
-#saving to CSV
+# Saving to CSV
 csv_file = os.path.join(output_path, "phrase_queries.csv")
 
 with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -161,5 +150,6 @@ with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
 
 
 print(f"\nPhrase Query Results saved to: {csv_file}")
+
 
 spark.stop()

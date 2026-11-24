@@ -1,44 +1,34 @@
+
 import os
+import sys
 import csv
 import math
-from pyspark.sql import SparkSession
+
+# Add project directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from logic.functions import (
+    get_paths,
+    create_spark_session,
+    read_documents
+)
 
 
-#paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dataset_path = os.path.join(BASE_DIR, "data set")
-output_path = os.path.join(BASE_DIR, "output")
-
-os.makedirs(output_path, exist_ok=True)
+# Paths
+BASE_DIR, dataset_path, output_path = get_paths()
 
 
-#buil spark session
-spark = SparkSession.builder \
-    .appName("IR Project - Term Statistics") \
-    .master("local[*]") \
-    .getOrCreate()
-
-spark.sparkContext.setLogLevel("ERROR")
+# Create Spark Session
+spark = create_spark_session("IR Project - Term Statistics")
 
 
-#read documents
-documents = []
-
-for filename in os.listdir(dataset_path):
-
-    if filename.endswith(".txt"):
-
-        file_path = os.path.join(dataset_path, filename)
-
-        with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read().lower()
-
-        doc_id = filename.replace(".txt", "")
-        documents.append((doc_id, content))
+# Read Documents
+documents = read_documents(dataset_path)
 
 
-#TF
+# TF
 documents_rdd = spark.sparkContext.parallelize(documents)
+
 
 def calculate_tf(document):
 
@@ -52,13 +42,13 @@ tf_rdd = documents_rdd.flatMap(calculate_tf) \
     .reduceByKey(lambda a, b: a + b)
 
 
-#DF
+# DF
 df_rdd = tf_rdd.map(
     lambda item: (item[0][0], 1)
 ).reduceByKey(lambda a, b: a + b)
 
 
-#Calculate IDF
+# Calculate IDF
 N = len(documents)
 
 idf_rdd = df_rdd.map(
@@ -68,33 +58,34 @@ idf_rdd = df_rdd.map(
     )
 )
 
+
 tf_results = tf_rdd.collect()
 df_results = df_rdd.collect()
 idf_results = idf_rdd.collect()
 
 
-#print TF
+# Print TF
 print("\n========== TERM FREQUENCY (TF) ==========\n")
 
 for (word, doc_id), tf in sorted(tf_results):
     print(f"{word} - {doc_id}: {tf}")
 
 
-#print DF
+# Print DF
 print("\n========== DOCUMENT FREQUENCY (DF) ==========\n")
 
 for word, df in sorted(df_results):
     print(f"{word}: {df}")
 
 
-#print IDF
+# Print IDF
 print("\n========== INVERSE DOCUMENT FREQUENCY (IDF) ==========\n")
 
 for word, idf in sorted(idf_results):
     print(f"{word}: {idf:.4f}")
 
 
-# save TF to CSV
+# Save TF to CSV
 tf_file = os.path.join(output_path, "term_statistics.csv")
 
 with open(tf_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -106,7 +97,7 @@ with open(tf_file, "w", newline="", encoding="utf-8-sig") as file:
         writer.writerow([word, doc_id, tf])
 
 
-#save DF and IDF to CSV
+# Save DF and IDF to CSV
 summary_file = os.path.join(output_path, "term_statistics_summary.csv")
 
 df_dict = dict(df_results)
@@ -127,5 +118,6 @@ with open(summary_file, "w", newline="", encoding="utf-8-sig") as file:
 
 print(f"\nTF saved to: {tf_file}")
 print(f"DF and IDF saved to: {summary_file}")
+
 
 spark.stop()

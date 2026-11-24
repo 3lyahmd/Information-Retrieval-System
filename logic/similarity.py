@@ -1,43 +1,31 @@
+
 import os
+import sys
 import csv
 import math
-from pyspark.sql import SparkSession
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from logic.functions import (
+    get_paths,
+    create_spark_session,
+    read_documents
+)
 
 
-#paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dataset_path = os.path.join(BASE_DIR, "data set")
-output_path = os.path.join(BASE_DIR, "output")
-
-os.makedirs(output_path, exist_ok=True)
+# Paths
+BASE_DIR, dataset_path, output_path = get_paths()
 
 
-#building spark session
-spark = SparkSession.builder \
-    .appName("IR Project - Similarity") \
-    .master("local[*]") \
-    .getOrCreate()
-
-spark.sparkContext.setLogLevel("ERROR")
+# Building Spark Session
+spark = create_spark_session("IR Project - Similarity")
 
 
-#reading documents
-documents = []
-
-for filename in os.listdir(dataset_path):
-
-    if filename.endswith(".txt"):
-
-        file_path = os.path.join(dataset_path, filename)
-
-        with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read().lower()
-
-        doc_id = filename.replace(".txt", "")
-        documents.append((doc_id, content))
+# Reading Documents
+documents = read_documents(dataset_path)
 
 
-#TF
+# TF
 documents_rdd = spark.sparkContext.parallelize(documents)
 
 tf_rdd = documents_rdd.flatMap(
@@ -48,7 +36,7 @@ tf_rdd = documents_rdd.flatMap(
 ).reduceByKey(lambda a, b: a + b)
 
 
-#DF
+# DF
 df_rdd = tf_rdd.map(
     lambda item: (item[0][0], 1)
 ).reduceByKey(lambda a, b: a + b)
@@ -63,7 +51,7 @@ idf_dict = {
 }
 
 
-#TF-IDF Matrix
+# TF-IDF Matrix
 tfidf_data = tf_rdd.collect()
 
 tfidf_matrix = {}
@@ -81,7 +69,7 @@ for (word, doc_id), tf in tfidf_data:
     tfidf_matrix[doc_id][word] = score
 
 
-#normalization
+# Normalization
 normalized_matrix = {}
 
 for doc_id, vector in tfidf_matrix.items():
@@ -99,7 +87,7 @@ for doc_id, vector in tfidf_matrix.items():
         }
 
 
-#cosine similarity
+# Cosine Similarity
 def calculate_similarity(query):
 
     words = query.lower().split()
@@ -146,7 +134,7 @@ def calculate_similarity(query):
     return scores
 
 
-#tsting
+# Testing
 queries = [
     "machine learning",
     "data science"
@@ -171,7 +159,7 @@ for query in queries:
         ])
 
 
-#CSV
+# CSV
 csv_file = os.path.join(output_path, "similarity.csv")
 
 with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -188,5 +176,6 @@ with open(csv_file, "w", newline="", encoding="utf-8-sig") as file:
 
 
 print(f"\nSimilarity Results saved to: {csv_file}")
+
 
 spark.stop()

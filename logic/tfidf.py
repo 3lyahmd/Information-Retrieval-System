@@ -1,44 +1,34 @@
+
 import os
+import sys
 import csv
 import math
-from pyspark.sql import SparkSession
+
+# Add project directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from logic.functions import (
+    get_paths,
+    create_spark_session,
+    read_documents
+)
 
 
-#paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-dataset_path = os.path.join(BASE_DIR, "data set")
-output_path = os.path.join(BASE_DIR, "output")
-
-os.makedirs(output_path, exist_ok=True)
+# Paths
+BASE_DIR, dataset_path, output_path = get_paths()
 
 
-#build spark session
-spark = SparkSession.builder \
-    .appName("IR Project - TF-IDF") \
-    .master("local[*]") \
-    .getOrCreate()
-
-spark.sparkContext.setLogLevel("ERROR")
+# Create Spark Session
+spark = create_spark_session("IR Project - TF-IDF")
 
 
-#read documents
-documents = []
-
-for filename in os.listdir(dataset_path):
-
-    if filename.endswith(".txt"):
-
-        file_path = os.path.join(dataset_path, filename)
-
-        with open(file_path, "r", encoding="utf-8") as file:
-            content = file.read().lower()
-
-        doc_id = filename.replace(".txt", "")
-        documents.append((doc_id, content))
+# Read Documents
+documents = read_documents(dataset_path)
 
 
-#TF
+# TF
 documents_rdd = spark.sparkContext.parallelize(documents)
+
 
 def calculate_tf(document):
 
@@ -52,13 +42,13 @@ tf_rdd = documents_rdd.flatMap(calculate_tf) \
     .reduceByKey(lambda a, b: a + b)
 
 
-#DF
+# DF
 df_rdd = tf_rdd.map(
     lambda item: (item[0][0], 1)
 ).reduceByKey(lambda a, b: a + b)
 
 
-#IDF
+# IDF
 N = len(documents)
 
 idf_dict = dict(
@@ -71,7 +61,7 @@ idf_dict = dict(
 )
 
 
-#TF-IDF
+# TF-IDF
 tf_results = tf_rdd.collect()
 
 tfidf_matrix = {}
@@ -87,7 +77,7 @@ for (word, doc_id), tf in tf_results:
     tfidf_matrix[doc_id][word] = tfidf
 
 
-#print TF-IDF
+# Print TF-IDF
 print("\n========== TF-IDF MATRIX ==========\n")
 
 for doc_id in sorted(tfidf_matrix, key=lambda x: int(x[1:])):
@@ -98,7 +88,7 @@ for doc_id in sorted(tfidf_matrix, key=lambda x: int(x[1:])):
         print(f"  {word}: {tfidf_matrix[doc_id][word]:.4f}")
 
 
-#save TF-IDF to CSV
+# Save TF-IDF to CSV
 tfidf_file = os.path.join(output_path, "tfidf.csv")
 
 with open(tfidf_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -116,7 +106,7 @@ with open(tfidf_file, "w", newline="", encoding="utf-8-sig") as file:
             ])
 
 
-#calculate lengths
+# Calculate Vector Lengths
 vector_lengths = {}
 
 for doc_id, weights in tfidf_matrix.items():
@@ -132,7 +122,7 @@ for doc_id in sorted(vector_lengths, key=lambda x: int(x[1:])):
     print(f"{doc_id}: {vector_lengths[doc_id]:.4f}")
 
 
-#normalization
+# Normalization
 normalized_tfidf = {}
 
 for doc_id, weights in tfidf_matrix.items():
@@ -155,7 +145,7 @@ for doc_id in sorted(normalized_tfidf, key=lambda x: int(x[1:])):
         print(f"  {word}: {normalized_tfidf[doc_id][word]:.4f}")
 
 
-#save normalized TF-IDF to CSV
+# Save Normalized TF-IDF to CSV
 normalized_file = os.path.join(output_path, "normalized_tfidf.csv")
 
 with open(normalized_file, "w", newline="", encoding="utf-8-sig") as file:
@@ -175,5 +165,6 @@ with open(normalized_file, "w", newline="", encoding="utf-8-sig") as file:
 
 print(f"\nTF-IDF saved to: {tfidf_file}")
 print(f"Normalized TF-IDF saved to: {normalized_file}")
+
 
 spark.stop()

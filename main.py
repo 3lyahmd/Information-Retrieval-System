@@ -4,18 +4,39 @@ import csv
 import hashlib
 import subprocess
 
-
-#paths
-project_path = os.path.dirname(os.path.abspath(__file__))
-
-dataset_path = os.path.join(project_path, "data set")
-output_path = os.path.join(project_path, "output")
-
-os.makedirs(output_path, exist_ok=True)
+from logic.functions import get_paths
 
 
-#scripts
+# Paths
+project_path, dataset_path, output_path = get_paths()
+
+# Dataset Path Input
+
+default_dataset_path = os.path.join(project_path, "data set")
+
+print("\n========== DATASET LOCATION ==========")
+print("Default Path:", default_dataset_path)
+
+dataset_input = input(
+    "\nEnter Dataset Path (Press Enter for default): "
+).strip().strip('"')
+
+if dataset_input:
+    dataset_path = os.path.abspath(dataset_input)
+else:
+    dataset_path = default_dataset_path
+
+if not os.path.isdir(dataset_path):
+    print("\nERROR: Dataset folder does not exist!")
+    sys.exit(1)
+
+os.environ["IR_DATASET_PATH"] = dataset_path
+
+print("\nSelected Dataset:", dataset_path)
+
+# Scripts
 scripts = [
+    "logic/documents.py",
     "logic/positional_index.py",
     "logic/term_statistics.py",
     "logic/tfidf.py",
@@ -25,8 +46,9 @@ scripts = [
 ]
 
 
-#CSV files
+# CSV Files
 required_outputs = [
+    "documents.csv",
     "positional_index.csv",
     "term_statistics.csv",
     "term_statistics_summary.csv",
@@ -38,7 +60,7 @@ required_outputs = [
 ]
 
 
-#calculate signature
+# Calculate Signature
 def calculate_signature():
 
     signature = hashlib.sha256()
@@ -65,9 +87,7 @@ def calculate_signature():
 
     for file_path in files_to_check:
 
-        relative_path = os.path.relpath(
-            file_path, project_path
-        )
+        relative_path = os.path.abspath(file_path)
 
         signature.update(relative_path.encode("utf-8"))
 
@@ -77,13 +97,13 @@ def calculate_signature():
     return signature.hexdigest()
 
 
-#cache file
+# Cache File
 cache_file = os.path.join(
     output_path, "cache_signature.txt"
 )
 
 
-#check cache
+# Check Cache
 def cache_is_valid():
 
     if not os.path.exists(cache_file):
@@ -107,7 +127,7 @@ def cache_is_valid():
     return saved_signature == current_signature
 
 
-#Display CSV
+# Display CSV
 def display_saved_results():
 
     for filename in required_outputs:
@@ -131,7 +151,7 @@ def display_saved_results():
                 print(" | ".join(row))
 
 
-#Create Excel Workbook
+# Create Excel Workbook
 def combine_all_results():
 
     from openpyxl import Workbook
@@ -155,17 +175,18 @@ def combine_all_results():
     workbook.remove(default_sheet)
 
     sheet_names = {
-        "positional_index.csv": "Positional Index",
-        "term_statistics.csv": "Term Statistics",
-        "term_statistics_summary.csv": "Statistics Summary",
-        "tfidf.csv": "TF-IDF",
-        "normalized_tfidf.csv": "Normalized TF-IDF",
-        "phrase_queries.csv": "Phrase Queries",
-        "similarity.csv": "Similarity",
-        "boolean_queries.csv": "Boolean Queries"
-    }
+    "documents.csv": "Documents",
+    "positional_index.csv": "Positional Index",
+    "term_statistics.csv": "Term Statistics",
+    "term_statistics_summary.csv": "Statistics Summary",
+    "tfidf.csv": "TF-IDF",
+    "normalized_tfidf.csv": "Normalized TF-IDF",
+    "phrase_queries.csv": "Phrase Queries",
+    "similarity.csv": "Similarity",
+    "boolean_queries.csv": "Boolean Queries"
+}
 
-    # Header formatting
+    # Header Formatting
     header_fill = PatternFill(
         fill_type="solid",
         fgColor="1F4E78"
@@ -184,7 +205,7 @@ def combine_all_results():
         )
     )
 
-    # Create sheets
+    # Create Sheets
     for filename, sheet_name in sheet_names.items():
 
         file_path = os.path.join(output_path, filename)
@@ -224,13 +245,13 @@ def combine_all_results():
 
                         cell.border = thin_border
 
-        # Freeze header
+        # Freeze Header
         sheet.freeze_panes = "A2"
 
-        # Add filters
+        # Add Filters
         sheet.auto_filter.ref = sheet.dimensions
 
-        # Adjust column widths
+        # Adjust Column Widths
         for column in sheet.columns:
 
             max_length = 0
@@ -255,7 +276,7 @@ def combine_all_results():
 
         sheet.row_dimensions[1].height = 25
 
-    # Save workbook
+    # Save Workbook
     workbook.save(combined_file)
 
     print("\n" + "=" * 60)
@@ -266,13 +287,13 @@ def combine_all_results():
     print(f"Total Sheets: {len(sheet_names)}")
 
 
-#header
+# Header
 print("\n" + "=" * 60)
 print("       INFORMATION RETRIEVAL PROJECT")
 print("=" * 60, flush=True)
 
 
-#Use Cache or Run Spark
+# Use Cache or Run Spark
 if cache_is_valid():
 
     print("\nCACHE FOUND!")
@@ -313,7 +334,7 @@ else:
             "To adjust logging level use sc.setLogLevel"
         ]
 
-        # Display script output
+        # Display Script Output
         for line in result.stdout.splitlines():
 
             if not any(
@@ -321,7 +342,7 @@ else:
             ):
                 print(line)
 
-        # Stop if script fails
+        # Stop if Script Fails
         if result.returncode != 0:
 
             print(f"\nERROR: {script} failed!")
@@ -332,7 +353,7 @@ else:
         print(f"\nFinished: {script}", flush=True)
 
 
-    #Verify CSV Files
+    # Verify CSV Files
     missing_outputs = []
 
     for filename in required_outputs:
@@ -357,7 +378,7 @@ else:
         sys.exit(1)
 
 
-    #Save Cache Signature
+    # Save Cache Signature
     current_signature = calculate_signature()
 
     with open(cache_file, "w", encoding="utf-8") as file:
@@ -367,7 +388,7 @@ else:
     print("Cache signature saved.")
 
 
-#Create Excel Workbook
+# Create Excel Workbook
 combine_all_results()
 
 print("\n" + "=" * 60)

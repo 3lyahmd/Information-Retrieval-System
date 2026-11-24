@@ -1,29 +1,144 @@
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import csv
+import os
+import sys
+import subprocess
 from pathlib import Path
+
+from logic.functions import get_paths
 
 
 # ==========================================
 # 1. PROJECT PATHS
 # ==========================================
 
-BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = BASE_DIR / "output"
-DATASET_DIR = BASE_DIR / "data set"
+base_dir, dataset_path, output_path = get_paths()
+
+BASE_DIR = Path(base_dir)
+OUTPUT_DIR = Path(output_path)
+DATASET_DIR = Path(dataset_path)
+
+
+def prepare_dataset_and_cache():
+    """Choose a dataset folder, then let main.py validate/rebuild its cache."""
+
+    picker = tk.Tk()
+    picker.withdraw()
+    picker.attributes("-topmost", True)
+
+    selected_dataset = filedialog.askdirectory(
+        title="Select Dataset Folder (Cancel = use default folder)",
+        initialdir=str(DATASET_DIR)
+    )
+
+    picker.destroy()
+
+    # Cancel means use the project's default 'data set' directory.
+    if not selected_dataset:
+        selected_dataset = str(DATASET_DIR)
+
+    selected_dataset = os.path.abspath(selected_dataset)
+
+    if not os.path.isdir(selected_dataset):
+        error_root = tk.Tk()
+        error_root.withdraw()
+        messagebox.showerror(
+            "Dataset Error",
+            f"Dataset folder does not exist:\n{selected_dataset}"
+        )
+        error_root.destroy()
+        raise SystemExit(1)
+
+    text_files = [
+        name for name in os.listdir(selected_dataset)
+        if name.lower().endswith(".txt")
+        and os.path.isfile(os.path.join(selected_dataset, name))
+    ]
+
+    if not text_files:
+        error_root = tk.Tk()
+        error_root.withdraw()
+        messagebox.showerror(
+            "Dataset Error",
+            "The selected folder does not contain any .txt documents."
+        )
+        error_root.destroy()
+        raise SystemExit(1)
+
+    # main.py asks for the dataset path in Terminal. Feed the selected path
+    # to that prompt so the same cache/signature logic remains authoritative.
+    main_file = BASE_DIR / "main.py"
+
+    if not main_file.is_file():
+        error_root = tk.Tk()
+        error_root.withdraw()
+        messagebox.showerror(
+            "Startup Error",
+            f"main.py was not found:\n{main_file}"
+        )
+        error_root.destroy()
+        raise SystemExit(1)
+
+    print("\n========== GUI DATASET STARTUP ==========\n")
+    print("Selected Dataset:", selected_dataset)
+    print("Checking cache / generating missing results...\n")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-u", str(main_file)],
+            cwd=str(BASE_DIR),
+            input=selected_dataset + "\n",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+
+        print(result.stdout)
+
+        if result.returncode != 0:
+            error_root = tk.Tk()
+            error_root.withdraw()
+            messagebox.showerror(
+                "Project Startup Failed",
+                "main.py could not prepare the project data.\n\n"
+                "Check the Terminal output for details.\n\n"
+                + result.stdout[-3000:]
+            )
+            error_root.destroy()
+            raise SystemExit(result.returncode)
+
+    except OSError as error:
+        error_root = tk.Tk()
+        error_root.withdraw()
+        messagebox.showerror("Startup Error", str(error))
+        error_root.destroy()
+        raise SystemExit(1)
+
+    return Path(selected_dataset)
+
+
+# Run the main pipeline before loading the GUI.
+# If the cache is valid, main.py loads saved CSVs and skips Spark.
+DATASET_DIR = prepare_dataset_and_cache()
 
 
 # ==========================================
 # 2. COLORS
 # ==========================================
 
-SIDEBAR_COLOR = "#172554"
-BG_COLOR = "#F4F6F9"
-TEXT_COLOR = "#1E293B"
-ACCENT_COLOR = "#2563EB"
-WHITE = "#FFFFFF"
-MUTED_COLOR = "#64748B"
+# Dark navy + cyan theme inspired by the reference dashboard
+SIDEBAR_COLOR = "#0B1428"
+BG_COLOR = "#0A1020"
+TEXT_COLOR = "#EAF2FF"
+ACCENT_COLOR = "#00E5F0"
+WHITE = "#14213A"          # Reused as the main panel/card color
+MUTED_COLOR = "#91A4C5"
+BORDER_COLOR = "#263653"
+HOVER_COLOR = "#1B3152"
 
 
 # ==========================================
@@ -33,8 +148,8 @@ MUTED_COLOR = "#64748B"
 root = tk.Tk()
 
 root.title("Information Retrieval System")
-root.geometry("1200x750")
-root.minsize(950, 600)
+root.geometry("1400x850")
+root.minsize(1100, 700)
 root.configure(bg=BG_COLOR)
 
 
@@ -48,25 +163,48 @@ style.theme_use("clam")
 
 style.configure(
     "Treeview",
-    background="white",
+    background=WHITE,
     foreground=TEXT_COLOR,
-    rowheight=30,
-    fieldbackground="white",
+    rowheight=34,
+    fieldbackground=WHITE,
+    bordercolor=BORDER_COLOR,
+    lightcolor=BORDER_COLOR,
+    darkcolor=BORDER_COLOR,
     font=("Arial", 10)
 )
 
 style.configure(
     "Treeview.Heading",
-    background=SIDEBAR_COLOR,
-    foreground="white",
+    background="#1B2B49",
+    foreground=ACCENT_COLOR,
     font=("Arial", 10, "bold"),
-    padding=8
+    padding=10,
+    relief="flat"
 )
 
 style.map(
     "Treeview",
-    background=[("selected", ACCENT_COLOR)],
-    foreground=[("selected", "white")]
+    background=[("selected", "#155E75")],
+    foreground=[("selected", "#FFFFFF")]
+)
+
+style.configure(
+    "TEntry",
+    fieldbackground="#0E1A30",
+    foreground=TEXT_COLOR,
+    insertcolor=ACCENT_COLOR,
+    bordercolor=BORDER_COLOR,
+    lightcolor=BORDER_COLOR,
+    darkcolor=BORDER_COLOR,
+    padding=8
+)
+
+style.configure(
+    "TScrollbar",
+    background="#1B2B49",
+    troughcolor=BG_COLOR,
+    bordercolor=BG_COLOR,
+    arrowcolor=ACCENT_COLOR
 )
 
 
@@ -77,7 +215,7 @@ style.map(
 sidebar = tk.Frame(
     root,
     bg=SIDEBAR_COLOR,
-    width=245
+    width=235
 )
 
 sidebar.pack(side="left", fill="y")
@@ -87,7 +225,7 @@ sidebar.pack_propagate(False)
 logo = tk.Label(
     sidebar,
     text="IR SYSTEM",
-    font=("Arial", 22, "bold"),
+    font=("Arial", 21, "bold"),
     bg=SIDEBAR_COLOR,
     fg=WHITE
 )
@@ -100,7 +238,7 @@ subtitle = tk.Label(
     text="INFORMATION RETRIEVAL",
     font=("Arial", 8, "bold"),
     bg=SIDEBAR_COLOR,
-    fg="#94A3B8"
+    fg=MUTED_COLOR
 )
 
 subtitle.pack(pady=(0, 25))
@@ -139,7 +277,7 @@ header.pack_propagate(False)
 header_title = tk.Label(
     header,
     text="Dashboard",
-    font=("Arial", 22, "bold"),
+    font=("Arial", 21, "bold"),
     bg=WHITE,
     fg=TEXT_COLOR
 )
@@ -318,11 +456,14 @@ def display_table(parent, headers, rows):
             text=column
         )
 
+        column_width = 650 if column == "Exact document text" else 150
+        column_anchor = "w" if column == "Exact document text" else "center"
+
         tree.column(
             column,
-            width=180,
+            width=column_width,
             minwidth=100,
-            anchor="center"
+            anchor=column_anchor
         )
 
     # Scrollbars
@@ -415,7 +556,9 @@ def display_table(parent, headers, rows):
         text="Search",
         command=search_table,
         bg=ACCENT_COLOR,
-        fg=WHITE,
+        fg="#061321",
+        activebackground="#00B7C2",
+        activeforeground="#061321",
         relief="flat",
         padx=15,
         pady=6,
@@ -428,7 +571,7 @@ def display_table(parent, headers, rows):
         search_frame,
         text="Reset",
         command=reset_search,
-        bg="#E2E8F0",
+        bg="#1B2B49",
         fg=TEXT_COLOR,
         relief="flat",
         padx=15,
@@ -468,7 +611,7 @@ def show_csv_page(title, description, filename):
             text=f"File not found or could not be read:\n{filename}",
             font=("Arial", 13),
             bg=BG_COLOR,
-            fg="red"
+            fg="#FF7B8B"
         ).pack(pady=30)
 
         return
@@ -549,7 +692,7 @@ def show_dashboard():
             cards_frame,
             bg=WHITE,
             height=130,
-            highlightbackground="#E2E8F0",
+            highlightbackground=BORDER_COLOR,
             highlightthickness=1
         )
 
@@ -639,6 +782,19 @@ def show_dashboard():
 
 
 # ==========================================
+# 15. DOCUMENTS PAGE
+# ==========================================
+
+def show_documents():
+
+    show_csv_page(
+        "Documents",
+        "View the original text and word count of every document.",
+        "documents.csv"
+    )
+
+
+# ==========================================
 # 15. POSITIONAL INDEX PAGE
 # ==========================================
 
@@ -676,7 +832,7 @@ def show_tf_matrix():
             content,
             text="term_statistics.csv not found!",
             bg=BG_COLOR,
-            fg="red"
+            fg="#FF7B8B"
         ).pack(pady=30)
 
         return
@@ -781,7 +937,7 @@ def show_phrase_search():
             content,
             text="phrase_queries.csv not found!",
             bg=BG_COLOR,
-            fg="red"
+            fg="#FF7B8B"
         ).pack(pady=30)
 
         return
@@ -854,7 +1010,7 @@ def show_phrase_search():
                 text="No matching phrase found in saved results.",
                 font=("Arial", 12),
                 bg=BG_COLOR,
-                fg="#DC2626"
+                fg="#FF7B8B"
             ).pack(pady=20)
 
             return
@@ -870,7 +1026,9 @@ def show_phrase_search():
         text="Search Phrase",
         command=search_phrase,
         bg=ACCENT_COLOR,
-        fg=WHITE,
+        fg="#061321",
+        activebackground="#00B7C2",
+        activeforeground="#061321",
         relief="flat",
         font=("Arial", 10, "bold"),
         padx=20,
@@ -928,7 +1086,7 @@ def show_boolean_search():
             content,
             text="boolean_queries.csv not found!",
             bg=BG_COLOR,
-            fg="red"
+            fg="#FF7B8B"
         ).pack(pady=30)
 
         return
@@ -1000,7 +1158,7 @@ def show_boolean_search():
                 text="No matching Boolean query found in saved results.",
                 font=("Arial", 12),
                 bg=BG_COLOR,
-                fg="#DC2626"
+                fg="#FF7B8B"
             ).pack(pady=20)
 
             return
@@ -1016,7 +1174,9 @@ def show_boolean_search():
         text="Run Boolean Search",
         command=search_boolean,
         bg=ACCENT_COLOR,
-        fg=WHITE,
+        fg="#061321",
+        activebackground="#00B7C2",
+        activeforeground="#061321",
         relief="flat",
         font=("Arial", 10, "bold"),
         padx=20,
@@ -1047,13 +1207,15 @@ def create_sidebar_button(text, command):
         text=text,
         font=("Arial", 10, "bold"),
         bg=SIDEBAR_COLOR,
-        fg=WHITE,
-        activebackground=ACCENT_COLOR,
-        activeforeground=WHITE,
+        fg=TEXT_COLOR,
+        activebackground="#123A50",
+        activeforeground=ACCENT_COLOR,
         relief="flat",
         anchor="w",
         padx=20,
-        pady=11,
+        pady=13,
+        bd=0,
+        highlightthickness=0,
         cursor="hand2",
         command=command
     )
@@ -1074,6 +1236,11 @@ def create_sidebar_button(text, command):
 create_sidebar_button(
     "Dashboard",
     show_dashboard
+)
+
+create_sidebar_button(
+    "Documents",
+    show_documents
 )
 
 create_sidebar_button(
