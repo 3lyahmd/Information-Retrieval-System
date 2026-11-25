@@ -88,6 +88,7 @@ def calculate_signature():
     for file_path in files_to_check:
 
         relative_path = os.path.abspath(file_path)
+        
 
         signature.update(relative_path.encode("utf-8"))
 

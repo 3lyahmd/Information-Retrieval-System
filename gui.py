@@ -1,6 +1,6 @@
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import csv
 import os
 import sys
@@ -21,26 +21,28 @@ OUTPUT_DIR = Path(output_path)
 DATASET_DIR = Path(dataset_path)
 
 
+
 def prepare_dataset_and_cache():
-    """Choose a dataset folder, then let main.py validate/rebuild its cache."""
+    """Choose dataset, then run main.py with live output in Terminal."""
 
     picker = tk.Tk()
     picker.withdraw()
     picker.attributes("-topmost", True)
 
     selected_dataset = filedialog.askdirectory(
-        title="Select Dataset Folder (Cancel = use default folder)",
+        title="Select Dataset Folder (Cancel = use default dataset)",
         initialdir=str(DATASET_DIR)
     )
 
     picker.destroy()
 
-    # Cancel means use the project's default 'data set' directory.
+    # Cancel = Default Dataset
     if not selected_dataset:
         selected_dataset = str(DATASET_DIR)
 
     selected_dataset = os.path.abspath(selected_dataset)
 
+    # Validate dataset folder
     if not os.path.isdir(selected_dataset):
         error_root = tk.Tk()
         error_root.withdraw()
@@ -67,8 +69,7 @@ def prepare_dataset_and_cache():
         error_root.destroy()
         raise SystemExit(1)
 
-    # main.py asks for the dataset path in Terminal. Feed the selected path
-    # to that prompt so the same cache/signature logic remains authoritative.
+    # Check main.py
     main_file = BASE_DIR / "main.py"
 
     if not main_file.is_file():
@@ -81,35 +82,43 @@ def prepare_dataset_and_cache():
         error_root.destroy()
         raise SystemExit(1)
 
-    print("\n========== GUI DATASET STARTUP ==========\n")
-    print("Selected Dataset:", selected_dataset)
-    print("Checking cache / generating missing results...\n")
+    print("\n" + "=" * 60)
+    print("GUI DATASET STARTUP")
+    print("=" * 60)
+    print(f"Selected Dataset: {selected_dataset}")
+    print("Starting main.py...\n")
 
     try:
-        result = subprocess.run(
+        # stdout and stderr are inherited from the Terminal.
+        # -u makes Python output appear immediately.
+        process = subprocess.Popen(
             [sys.executable, "-u", str(main_file)],
             cwd=str(BASE_DIR),
-            input=selected_dataset + "\n",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdin=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace"
         )
 
-        print(result.stdout)
+        # Send selected dataset to main.py's input prompt.
+        process.communicate(input=selected_dataset + "\n")
 
-        if result.returncode != 0:
+        return_code = process.returncode
+
+        if return_code != 0:
             error_root = tk.Tk()
             error_root.withdraw()
             messagebox.showerror(
                 "Project Startup Failed",
-                "main.py could not prepare the project data.\n\n"
-                "Check the Terminal output for details.\n\n"
-                + result.stdout[-3000:]
+                f"main.py exited with error code: {return_code}\n"
+                "Check the Terminal for the full error."
             )
             error_root.destroy()
-            raise SystemExit(result.returncode)
+            raise SystemExit(return_code)
+
+        print("\n" + "=" * 60)
+        print("PROJECT PIPELINE FINISHED SUCCESSFULLY")
+        print("=" * 60 + "\n")
 
     except OSError as error:
         error_root = tk.Tk()
@@ -119,6 +128,7 @@ def prepare_dataset_and_cache():
         raise SystemExit(1)
 
     return Path(selected_dataset)
+
 
 
 # Run the main pipeline before loading the GUI.
